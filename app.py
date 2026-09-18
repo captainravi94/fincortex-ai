@@ -38,9 +38,17 @@ if "currency_symbol" not in st.session_state:
     st.session_state.currency_symbol = "₹"
 if "unit_scale" not in st.session_state:
     st.session_state.unit_scale = "Cr"
+
+# Safe Secret Resolution (Works both locally without secrets.toml and on Streamlit Cloud)
 if "gemini_api_key" not in st.session_state:
-    # Automatically reads from Streamlit Cloud Secrets if available, otherwise defaults to blank
-    st.session_state.gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
+    key_found = ""
+    try:
+        if "GEMINI_API_KEY" in st.secrets:
+            key_found = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        key_found = os.environ.get("GEMINI_API_KEY", "")
+    st.session_state.gemini_api_key = key_found
+
 if "extra_meta" not in st.session_state:
     st.session_state.extra_meta = {}
 if "pdf_bytes" not in st.session_state:
@@ -82,7 +90,6 @@ with st.sidebar:
         ["PDF Annual Report", "Upload Excel / CSV", "Investor Relations URL", "Benchmark Models"]
     )
 
-    # 1. PDF Annual Report Pipeline
     if ingest_mode == "PDF Annual Report":
         uploaded_pdf = st.file_uploader("Upload Annual Report (.pdf)", type=["pdf"])
         if uploaded_pdf and st.button("Parse PDF Document", type="primary"):
@@ -111,7 +118,6 @@ with st.sidebar:
                 except Exception as e:
                     st.error(f"PDF Extraction Error: {str(e)}")
 
-    # 2. Upload Excel / CSV Pipeline
     elif ingest_mode == "Upload Excel / CSV":
         uploaded_sheet = st.file_uploader("Upload Statements (.xlsx / .csv)", type=["xlsx", "xls", "csv"])
         if uploaded_sheet and st.button("Ingest Spreadsheet", type="primary"):
@@ -132,7 +138,6 @@ with st.sidebar:
             else:
                 st.error(msg)
 
-    # 3. Investor Relations URL Pipeline
     elif ingest_mode == "Investor Relations URL":
         ir_url = st.text_input("Enter Financial Table URL:", value="https://www.investor.gov")
         if st.button("Scrape Tables"):
@@ -144,7 +149,6 @@ with st.sidebar:
                 else:
                     st.warning(msg)
 
-    # 4. Institutional Benchmarks
     elif ingest_mode == "Benchmark Models":
         choice = st.selectbox("Select Institution:", list(PRESETS.keys()))
         if st.button("Load Institution"):
@@ -194,19 +198,22 @@ with st.sidebar:
 st.title(f"🏛️ FINCORTEX AI | {company_name}")
 st.caption(f"Taxonomy: **{taxonomy}** | Cycle: **{target_period}** | Document-to-Decision Financial Intelligence")
 
-# ----------------- EXECUTIVE PRODUCT INTRO VIDEO -----------------
-video_path = os.path.join("assets", "fincortex_intro.mp4")
+# ----------------- EXECUTIVE PRODUCT INTRO VIDEO (ROBUST RESOLUTION) -----------------
+assets_dir = os.path.join(os.path.dirname(__file__), "assets")
+video_files = [f for f in os.listdir(assets_dir) if f.lower().endswith(".mp4")] if os.path.exists(assets_dir) else []
 
-if os.path.exists(video_path):
+if video_files:
+    video_path = os.path.join(assets_dir, video_files[0])
     with st.expander("🎬 **WATCH: Introducing FINCORTEX AI (10s Overview)**", expanded=True):
         col_v1, col_v2, col_v3 = st.columns([1, 4, 1])
         with col_v2:
-            st.video(
-                video_path,
-                autoplay=False,
-                loop=False
-            )
-            st.caption("🔊 *Turn sound on for the institutional audio briefing.*")
+            try:
+                with open(video_path, "rb") as vfile:
+                    video_bytes = vfile.read()
+                st.video(video_bytes, format="video/mp4", autoplay=False)
+                st.caption("🔊 *Turn sound on for the institutional audio briefing.*")
+            except Exception as e:
+                st.warning(f"Could not load intro video: {str(e)}")
 
 # Core Financial Metrics Extraction
 curr_rev = safe_get_metric(df_metrics, "revenue", target_period)
@@ -259,7 +266,7 @@ else:
 
 st.markdown("---")
 
-# Navigation Tabs (All 9 Tabs Fully Mapped)
+# Navigation Tabs
 tab_spread, tab_wc, tab_scenarios, tab_ai, tab_anomalies, tab_deep, tab_charts, tab_forensics, tab_cfo_report = st.tabs([
     "📑 Spreading",
     "🌉 Cash Flow Bridge",
@@ -468,7 +475,6 @@ with tab_ai:
 
     st.markdown(dossier["content"])
 
-    # Visual Evidence Inspector (Active if PDF was ingested)
     if st.session_state.pdf_bytes is not None and st.session_state.pdf_meta:
         trace = st.session_state.pdf_meta.get("lineage_trace", {})
         if "revenue" in trace:
@@ -579,7 +585,6 @@ with tab_cfo_report:
     st.subheader("📄 Formal Boardroom Dossier & Institutional Export Hub")
     st.caption("Generate, preview, and download boardroom reports and financial spreads across formats.")
 
-    # Reconstruct the Comprehensive Dossier Markdown
     cfo_report_md = f"""# EXECUTIVE CFO FINANCIAL DOSSIER
 **ENTITY:** {company_name}  
 **TAXONOMY:** {taxonomy}  
@@ -620,14 +625,12 @@ with tab_cfo_report:
 {dossier.get('content', '')}
 """
 
-    # Full Preview
     st.markdown(cfo_report_md)
     st.markdown("---")
     st.subheader("📥 Export Downloads")
 
     col_dl1, col_dl2, col_dl3 = st.columns(3)
 
-    # 1. Guaranteed Markdown Download (Zero external dependencies)
     with col_dl1:
         st.download_button(
             label="📥 Download Dossier (.md)",
@@ -638,7 +641,6 @@ with tab_cfo_report:
             type="primary"
         )
 
-    # 2. Defensively Wrapped PDF Download
     with col_dl2:
         try:
             pdf_bytes = InstitutionalPDFExporter.build_pdf_dossier(
@@ -665,7 +667,6 @@ with tab_cfo_report:
         except Exception as e:
             st.warning("⚠️ PDF generation encountered a layout warning. Please use the Markdown or CSV exports.")
 
-    # 3. Spreaded Financial Data (.csv)
     with col_dl3:
         csv_data = df_metrics.to_csv().encode("utf-8")
         st.download_button(
