@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -38,7 +39,8 @@ if "currency_symbol" not in st.session_state:
 if "unit_scale" not in st.session_state:
     st.session_state.unit_scale = "Cr"
 if "gemini_api_key" not in st.session_state:
-    st.session_state.gemini_api_key = ""
+    # Automatically reads from Streamlit Cloud Secrets if available, otherwise defaults to blank
+    st.session_state.gemini_api_key = st.secrets.get("GEMINI_API_KEY", "")
 if "extra_meta" not in st.session_state:
     st.session_state.extra_meta = {}
 if "pdf_bytes" not in st.session_state:
@@ -191,6 +193,20 @@ with st.sidebar:
 # ----------------- MAIN INSTITUTIONAL HEADER -----------------
 st.title(f"🏛️ FINCORTEX AI | {company_name}")
 st.caption(f"Taxonomy: **{taxonomy}** | Cycle: **{target_period}** | Document-to-Decision Financial Intelligence")
+
+# ----------------- EXECUTIVE PRODUCT INTRO VIDEO -----------------
+video_path = os.path.join("assets", "fincortex_intro.mp4")
+
+if os.path.exists(video_path):
+    with st.expander("🎬 **WATCH: Introducing FINCORTEX AI (10s Overview)**", expanded=True):
+        col_v1, col_v2, col_v3 = st.columns([1, 4, 1])
+        with col_v2:
+            st.video(
+                video_path,
+                autoplay=False,
+                loop=False
+            )
+            st.caption("🔊 *Turn sound on for the institutional audio briefing.*")
 
 # Core Financial Metrics Extraction
 curr_rev = safe_get_metric(df_metrics, "revenue", target_period)
